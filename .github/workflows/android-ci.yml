@@ -1,0 +1,82 @@
+name: Deploy Android App to Google Play
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16" # Specify the Node.js version
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./client/knowar_client # Adjust this if your package.json is in a different directory
+
+      - name: set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: "11"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        working-directory: ./client/knowar_client/android
+
+      - name: Decode keystore and output file size
+        run:
+          echo "${{ secrets.KEYSTORE_BASE_64 }}" | base64 --decode >
+          my-release-key.keystore
+        working-directory: ./client/knowar_client/android/app
+
+      - name: Check Keystore File
+        run: |
+          if [ -f my-release-key.keystore ]; then
+            echo "Keystore file exists and has size:"
+            ls -l my-release-key.keystore
+          else
+            echo "Keystore file does not exist."
+          fi
+        working-directory: ./client/knowar_client/android/app
+
+      - name: Create or append to gradle.properties
+        run: |
+          touch gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> gradle.properties
+          echo "reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64" >> gradle.properties
+          echo "newArchEnabled=false" >> gradle.properties
+          echo "hermesEnabled=${{ secrets.HERMES_ENABLED }}" >> gradle.properties
+          echo "FLIPPER_VERSION=${{ secrets.FLIPPER_VERSION }}" >> gradle.properties
+          echo "MYAPP_RELEASE_STORE_FILE=my-release-key.keystore" >> gradle.properties
+          echo "MYAPP_RELEASE_KEY_ALIAS=${{ secrets.MYAPP_RELEASE_KEY_ALIAS }}" >> gradle.properties
+          echo "MYAPP_RELEASE_STORE_PASSWORD=${{ secrets.MYAPP_RELEASE_STORE_PASSWORD }}" >> gradle.properties
+          echo "MYAPP_RELEASE_KEY_PASSWORD=${{ secrets.MYAPP_RELEASE_KEY_PASSWORD }}" >> gradle.properties
+        working-directory: ./client/knowar_client/android
+
+      - name: Build with Gradle
+        run: ./gradlew bundleRelease
+        working-directory: ./client/knowar_client/android
+
+      # - name: Build with Gradle
+      #   run: ./gradlew bundleRelease
+      #   working-directory: ./client/knowar_client/android
+
+      # - name: Upload to Google Play
+      #   uses: r0adkll/upload-google-play@v1
+      #   with:
+      #     serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+      #     packageName: com.knowar_client
+      #     releaseFile: app/build/outputs/bundle/release/app-release.aab
+      #     track: production
